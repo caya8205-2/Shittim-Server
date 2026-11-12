@@ -2,6 +2,18 @@
 
 A private server for Blue Archive's Steam release, written in C# on ASP.NET Core (.NET 10). Progress lives in a local SQLite database, and it's far enough along that the game is just playable: log in, pull, clear stages, decorate the cafe.
 
+## About this fork
+
+This repository is `caya8205-2/Shittim-Server`, tracking [Neoexm/Shittim-Server](https://github.com/Neoexm/Shittim-Server) with runtime fixes merged on top.
+
+**"Stable" here describes the runtime, not the game version.** Of the builds available at the time of writing, this is the one whose ASP.NET server and mitmproxy redirect keep running through a session: no preset packets dying in a handler exception, no squad screen that stops taking input, no proxy that has to be restarted mid-session. It does **not** mean "ships the newest Blue Archive build on Steam". The server compiles its Excel data against the 1.93 client line, so a 1.96 install has to be rolled back before it can log in. Read "latest" as *latest stable runtime*, not *latest game version*.
+
+### Included here and not yet upstream
+
+- Squad presets work end to end: creating a preset, importing a formation into one, renaming a group, and switching between groups and the `Recent` tab. Upstream, `Echelon_PresetSave` throws on a slot that does not exist yet, and the preset packets drop a `0`-valued `GroupIndex`/`Index`, which leaves a card titled `Unit {0}` with placeholder units and marks every tab as selected at once. Sent upstream as [#50](https://github.com/Neoexm/Shittim-Server/pull/50).
+
+Once that pull request lands, this fork is intended to be a plain mirror again.
+
 Questions, bugs, support, or anything else: https://discord.gg/GANwPn9xX6
 
 ## Features
