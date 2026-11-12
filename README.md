@@ -14,6 +14,25 @@ This repository is `caya8205-2/Shittim-Server`, tracking [Neoexm/Shittim-Server]
 
 Once that pull request lands, this fork is intended to be a plain mirror again.
 
+### Rolling the Steam client back to 1.93
+
+The server builds its game data against the 1.93 client, so a 1.96 install will not get past the login. The rollback is an older depot manifest:
+
+```
+download_depot 3557620 3557621 6557220373208852788
+```
+
+That line goes into the **Steam console**, not `steamcmd`. `steamcmd +login anonymous +download_depot ...` refuses with `missing license for depot (No subscription)`: depot manifests are license-gated even though Blue Archive is free to play, so the download has to come from your own signed-in Steam client. Start Steam with `-console` (kill any running instance first, or the flag is silently dropped and the Console tab never appears).
+
+- app `3557620`, depot `3557621`.
+- `6557220373208852788` is the 27 Oct 2026 manifest, verified to unpack `1.93.453174`. The server's cache names `1.93.454564` — one patch inside the same 1.93 line.
+- ~23 GB, unpacked into a **second** copy at `steamapps/content/app_3557620/depot_3557621/`. It leaves your install untouched until you copy it over.
+- Verify before copying: `grep -aoE 'ba_live\.1\.9[0-9]\.[0-9]+' BlueArchive_Data/resources.assets` has to print the target version.
+- Copy with `robocopy <depot> <install> /MIR /MT:8` (exit codes 0-7 are success), then stop Steam from repairing it back: with Steam closed, set `buildid` and `TargetBuildID` to the same value in `appmanifest_3557620.acf` and `BytesToDownload` to `0`.
+- Launch through Steam's **Play** button. A direct `BlueArchive.exe` launch quits after ~3 s with `RestartRequired`, and Steam Offline Mode dies at the title screen with `70010006`.
+
+Once the game is at the lobby, `steamapps/content/app_3557620/` can be deleted to reclaim the second copy.
+
 Questions, bugs, support, or anything else: https://discord.gg/GANwPn9xX6
 
 ## Features
