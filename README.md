@@ -16,7 +16,7 @@ Once that pull request lands, this fork is intended to be a plain mirror again.
 
 ### Rolling the Steam client back to 1.93
 
-The server builds its game data against the 1.93 client, so a 1.96 install will not get past the login. The rollback is an older depot manifest:
+The server builds its game data against the 1.93 client, so a 1.96+ install will not get past the login. The rollback is an older depot manifest:
 
 ```
 download_depot 3557620 3557621 6557220373208852788
