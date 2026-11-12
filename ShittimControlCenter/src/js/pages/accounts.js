@@ -158,7 +158,8 @@ export default {
         body.appendChild(frag('<div class="hazard" style="margin:20px 0 16px"></div>'));
         body.appendChild(el('div', { text: 'Actions', style: { fontSize: '12px', fontWeight: '600', color: 'var(--ink-2)', margin: '0 0 10px' } }));
         const tools = el('div.row.wrap', { style: { gap: '10px' } });
-        tools.appendChild(cmdButton(d.serverId, 'Max all characters', 'max all'));
+        tools.appendChild(cmdButton(d.serverId, 'Max all characters (incl. UE)', 'max all'));
+        tools.appendChild(cmdButton(d.serverId, 'Max unique equipment only', 'max ue'));
         tools.appendChild(cmdButton(d.serverId, 'Unlock all characters', 'giveall'));
         tools.appendChild(cmdButton(d.serverId, 'Unlock campaign + story', ['unlockall campaign', 'unlockall story']));
         tools.appendChild(cmdButton(d.serverId, 'Unlock battlepass', 'unlockall battlepass'));

@@ -23,6 +23,7 @@ export default {
           cmdBtn(uid, 'All equipment', 'shield', 'giveallequip', 'ghost'),
           cmdBtn(uid, 'All characters', 'users', 'giveall', 'ghost', () => reloadChars()),
           cmdBtn(uid, 'Max characters', 'star', 'max all', 'ghost', () => reloadChars()),
+          cmdBtn(uid, 'Max UE only', 'shield', 'max ue', 'ghost', () => reloadChars()),
           dangerCmd(uid, 'Clear inventory', 'trash', 'clearinventory', () => reloadItems())));
       root.appendChild(bulk);
 
