@@ -22,7 +22,7 @@ The server builds its game data against the 1.93 client, so a 1.96+ install will
 download_depot 3557620 3557621 6557220373208852788
 ```
 
-That line goes into the **Steam console**, not `steamcmd`. `steamcmd +login anonymous +download_depot ...` refuses with `missing license for depot (No subscription)`: depot manifests are license-gated even though Blue Archive is free to play, so the download has to come from your own signed-in Steam client. Start Steam with `-console` (kill any running instance first, or the flag is silently dropped and the Console tab never appears).
+That line runs in the **Steam console** (`steam.exe -console`, kill any running instance first or the flag is silently dropped), or in `steamcmd` after logging in with an account that owns the game. What it cannot use is an anonymous login: `download_depot` checks the app's licence, and Blue Archive's free-to-play licence lives on an account, so `+login anonymous` answers `missing license for depot (No subscription)`. Log in with your own account — free to play still means you have to claim it, and Steam Guard means the first login is interactive — then the same command works from either client.
 
 - app `3557620`, depot `3557621`.
 - `6557220373208852788` is the 27 Oct 2026 manifest, verified to unpack `1.93.453174`. The server's cache names `1.93.454564` — one patch inside the same 1.93 line.
