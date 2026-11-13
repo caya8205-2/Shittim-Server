@@ -120,3 +120,8 @@ docs/deploy.sh
 # *.key, *.crt and other rules above (Git uses last-match-wins).
 !/Shittim-Server/config/
 !/Shittim-Server/config/**
+
+# Control Center build output and DB snapshots (local only)
+ShittimControlCenter/dist/
+ShittimControlCenter/dist-next/
+backups/

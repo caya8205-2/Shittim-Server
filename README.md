@@ -11,6 +11,9 @@ This repository is `caya8205-2/Shittim-Server`, tracking [Neoexm/Shittim-Server]
 ### Included here and not yet upstream
 
 - Squad presets work end to end: creating a preset, importing a formation into one, renaming a group, and switching between groups and the `Recent` tab. Upstream, `Echelon_PresetSave` throws on a slot that does not exist yet, and the preset packets drop a `0`-valued `GroupIndex`/`Index`, which leaves a card titled `Unit {0}` with placeholder units and marks every tab as selected at once. Sent upstream as [#50](https://github.com/Neoexm/Shittim-Server/pull/50).
+- `!apply` writes exactly the values it is given - level, star, skills, EX, potential, unique equipment and gear - instead of only maxing everything. Level is capped by the account level, star never drops below the character's own rarity (`star:base` resets to it), unique equipment is only valid at 5★, and gear tier follows the level band (T1 1-10 … T10 66-70).
+- `!character clear [hard]` empties the roster: the default form keeps the starting students and resets them, `hard` keeps only the account's Student Rep.
+- The Control Center gained a slider dialog for those values, presets for the old one-click actions, a database snapshot before every command with restore on the Updates page, and a second danger action for clearing characters.
 
 Once that pull request lands, this fork is intended to be a plain mirror again.
 
@@ -22,7 +25,12 @@ The server builds its game data against the 1.93 client, so a 1.96+ install will
 download_depot 3557620 3557621 6557220373208852788
 ```
 
-That line runs in the **Steam console** (`steam.exe -console`, kill any running instance first or the flag is silently dropped), or in `steamcmd` after logging in with an account that owns the game. What it cannot use is an anonymous login: `download_depot` checks the app's licence, and Blue Archive's free-to-play licence lives on an account, so `+login anonymous` answers `missing license for depot (No subscription)`. Log in with your own account — free to play still means you have to claim it, and Steam Guard means the first login is interactive — then the same command works from either client.
+That line runs in the **Steam console**. The console tab is hidden by default, so open it first:
+
+- Press `Win+R`, type `steam://open/console`, press Enter.
+- Or paste `steam://open/console` into a browser address bar and allow the browser to open Steam.
+
+Either way Steam shows a **Console** tab next to your library; type the command there. `steam.exe -console` also works, but only when Steam is not already running — otherwise the flag is silently dropped. If you use `steamcmd` instead, log in with an account that owns the game: `download_depot` checks the app's licence, and Blue Archive's free-to-play licence lives on an account, so `+login anonymous` answers `missing license for depot (No subscription)`. Free to play still means you have to claim it, and Steam Guard makes the first login interactive — after that the same command works from either client.
 
 - app `3557620`, depot `3557621`.
 - `6557220373208852788` is the 27 Oct 2026 manifest, verified to unpack `1.93.453174`. The server's cache names `1.93.454564` — one patch inside the same 1.93 line.
