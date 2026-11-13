@@ -125,3 +125,5 @@ docs/deploy.sh
 ShittimControlCenter/dist/
 ShittimControlCenter/dist-next/
 backups/
+/server-runtime/
+Shittim-Server-v*.zip
