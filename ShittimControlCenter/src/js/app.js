@@ -18,6 +18,20 @@ import notices from './pages/notices.js';
 import mods from './pages/mods.js';
 import updates from './pages/updates.js';
 
+// A page that throws while mounting used to leave a silent blank area. Surface it instead of
+// letting the UI look "empty" for no visible reason.
+window.addEventListener('error', (e) => {
+  const msg = (e && (e.message || (e.error && e.error.message))) || 'Unknown error';
+  console.error('[ui] uncaught', e && (e.error || e.message));
+  try { toast(`Render error: ${msg}`, 'bad'); } catch { /* toast not ready yet */ }
+});
+window.addEventListener('unhandledrejection', (e) => {
+  const reason = e && e.reason;
+  const msg = (reason && (reason.message || String(reason))) || 'Unhandled rejection';
+  console.error('[ui] unhandled rejection', reason);
+  try { toast(msg, 'bad'); } catch { /* toast not ready yet */ }
+});
+
 const PAGES = [overview, accounts, inventory, mail, schedule, events, rates, notices, mods, config, updates];
 const NAV = PAGES.map((p) => p.id);
 const byId = Object.fromEntries(PAGES.map((p) => [p.id, p]));

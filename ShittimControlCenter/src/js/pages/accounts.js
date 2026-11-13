@@ -158,11 +158,12 @@ export default {
         body.appendChild(frag('<div class="hazard" style="margin:20px 0 16px"></div>'));
         body.appendChild(el('div', { text: 'Actions', style: { fontSize: '12px', fontWeight: '600', color: 'var(--ink-2)', margin: '0 0 10px' } }));
         const tools = el('div.row.wrap', { style: { gap: '10px' } });
-        tools.appendChild(cmdButton(d.serverId, 'Max all characters (incl. UE)', 'max all'));
-        tools.appendChild(cmdButton(d.serverId, 'Max unique equipment only', 'max ue'));
-        tools.appendChild(cmdButton(d.serverId, 'Unlock all characters', 'giveall'));
-        tools.appendChild(cmdButton(d.serverId, 'Unlock campaign + story', ['unlockall campaign', 'unlockall story']));
-        tools.appendChild(cmdButton(d.serverId, 'Unlock battlepass', 'unlockall battlepass'));
+        tools.appendChild(cmdButton(d.serverId, 'Max all characters (incl. UE)', 'max all', 'Every student gets Lv90, max stars, skills, potentials, unique weapon ★4 Lv60, and empty gear slots filled.'));
+        tools.appendChild(cmdButton(d.serverId, 'Max unique equipment only', 'max ue', 'Equips and maxes unique weapons for students that are 5★.'));
+        tools.appendChild(cmdButton(d.serverId, 'Fill empty gear slots', 'max gear', 'Fills empty gear slots only — gear already equipped is left untouched.'));
+        tools.appendChild(cmdButton(d.serverId, 'Unlock all characters', 'giveall', 'Unlocks every student without touching levels or gear.'));
+        tools.appendChild(cmdButton(d.serverId, 'Unlock campaign + story', ['unlockall campaign', 'unlockall story'], 'Marks every campaign stage and story chapter as cleared.'));
+        tools.appendChild(cmdButton(d.serverId, 'Unlock battlepass', 'unlockall battlepass', 'Unlocks the battlepass track for this account.'));
         body.appendChild(tools);
 
         body.appendChild(frag(`<div class="muted" style="font-size:12px;margin-top:18px">${d.itemCount} items · ${d.characterCount} characters · ${d.mailCount} mails · ${escapeHtml(d.state || '')}</div>`));
@@ -176,11 +177,32 @@ export default {
         body.appendChild(el('div', { style: { marginTop: '16px' } }, del));
       }
 
-      function cmdButton(uid, label, command) {
+      function cmdButton(uid, label, command, desc) {
         const commands = Array.isArray(command) ? command : [command];
         return button(label, { variant: 'ghost', sm: true, onClick: async () => {
-          try { for (const c of commands) await api.command(uid, c); toast(label, 'good'); notifyRestart(); }
-          catch (e) { toast(e.message, 'bad'); }
+          const ok = await confirmDialog({
+            title: label,
+            message: desc ? `${desc} Account: ${d.nickname} (#${uid}).` : `Run "${label}" for ${d.nickname} (#${uid})? This applies immediately.`,
+            detail: commands.join('\n'),
+            confirmLabel: label,
+          });
+          if (!ok) return;
+
+          // Snapshot first: console commands cannot be undone from the UI.
+          const snap = await window.host
+            .backupCreate(label.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 32))
+            .catch((e) => ({ ok: false, error: String(e.message || e) }));
+          if (!snap || !snap.ok) toast(`Snapshot skipped: ${snap ? snap.error : 'unknown error'}`, 'warn');
+
+          try {
+            const outputs = [];
+            for (const c of commands) {
+              const res = await api.command(uid, c);
+              if (res && res.output) outputs.push(String(res.output).trim());
+            }
+            toast(outputs.filter(Boolean).join(' ').slice(0, 240) || `${label} done`, 'good');
+            notifyRestart();
+          } catch (e) { toast(e.message, 'bad'); }
         }});
       }
       async function maxCurrencies(id, edits) {

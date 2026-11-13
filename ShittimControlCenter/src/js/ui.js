@@ -160,13 +160,26 @@ export function promptAmount({ title, confirmLabel = 'Confirm', value = 1, onCon
   setTimeout(() => { amt.focus(); amt.select(); }, 50);
 }
 
-export function confirmDialog({ title = 'Confirm', message, confirmLabel = 'Confirm', danger = false }) {
+export function confirmDialog({ title = 'Confirm', message, confirmLabel = 'Confirm', danger = false, detail }) {
   return new Promise((resolve) => {
     const yes = button(confirmLabel, { variant: danger ? 'danger' : 'primary', iconName: 'check' });
     const no = button('Cancel', { variant: 'ghost' });
+    const body = el('div', { style: { fontSize: '14px', color: 'var(--ink-2)', lineHeight: '1.6' } }, message);
+    if (detail) {
+      // The exact command that will run: lets the operator verify intent and copy it out.
+      body.appendChild(el('div.mono', {
+        text: detail,
+        'data-selectable': '',
+        style: {
+          marginTop: '12px', padding: '8px 10px', borderRadius: '8px',
+          background: 'rgba(0,0,0,.28)', fontSize: '12.5px', color: 'var(--ink-3)',
+          whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+        },
+      }));
+    }
     const ref = modal({
       title,
-      body: el('div', { style: { fontSize: '14px', color: 'var(--ink-2)', lineHeight: '1.6' } }, message),
+      body,
       footer: [no, yes],
       onClose: () => resolve(false),
     });

@@ -1,4 +1,4 @@
-import { el, frag, clear, button, toast, escapeHtml } from '../ui.js';
+import { el, frag, clear, button, toast, escapeHtml, confirmDialog, notifyRestart } from '../ui.js';
 import { icon } from '../icons.js';
 
 // Git-free updater. "Check" compares the locally recorded commit (a download marker, or - for a real git checkout - HEAD) against origin/<branch> through the GitHub API and lists the incoming changelog.
@@ -16,9 +16,11 @@ export default {
 
     const checkBtn = button('Check for updates', { variant: 'primary', sm: true, iconName: 'refresh', onClick: doCheck });
 
+    const repoSub = el('span.sub', { text: 'caya8205-2/Shittim-Server' });
+
     const versionCard = el('div.card', {},
       el('div.card-head', {}, el('span.tab-mark', {}), el('h3', { text: 'Version' }),
-        el('span.sub', { text: 'Neoexm/Shittim-Server - main' }), el('div.spacer', {}), checkBtn),
+        repoSub, el('div.spacer', {}), checkBtn),
       el('div.card-body', {}, headInfo, resultBody));
 
     const rebuildBtn = button('Rebuild server', { variant: 'ghost', iconName: 'bolt', onClick: doRebuild });
@@ -35,10 +37,64 @@ export default {
     root.appendChild(versionCard);
     root.appendChild(maintCard);
 
+    // Database snapshots: written before every bulk console command, restorable here.
+    const snapBody = el('div', { style: { minWidth: '0' } });
+    const snapCard = el('div.card', { style: { marginTop: '18px' } },
+      el('div.card-head', {}, el('span.tab-mark', {}), el('h3', { text: 'Database snapshots' }),
+        el('span.sub', { text: 'Written automatically before bulk commands' }), el('div.spacer', {}),
+        button('Snapshot now', { variant: 'ghost', sm: true, iconName: 'shield', onClick: takeSnapshot })),
+      el('div.card-body', {}, snapBody));
+    root.appendChild(snapCard);
+
     paintHead(null);
     clear(resultBody);
-    resultBody.appendChild(spinnerRow('Checking origin/main...'));
+    resultBody.appendChild(spinnerRow('Checking origin...'));
     doCheck();
+    reloadSnapshots();
+
+    async function reloadSnapshots() {
+      const res = await window.host.backupList().catch((e) => ({ ok: false, error: String(e.message || e) }));
+      clear(snapBody);
+      if (!res || !res.ok) {
+        snapBody.appendChild(statusRow('bad', 'Could not list snapshots', res && res.error));
+        return;
+      }
+      if (!res.items.length) {
+        snapBody.appendChild(statusRow('warn', 'No snapshots yet', 'One is written before every bulk command run from Inventory or Accounts.'));
+        return;
+      }
+
+      const tbl = frag('<table class="tbl"><thead><tr><th>Snapshot</th><th style="width:84px">Size</th><th style="width:150px">When</th><th style="width:104px"></th></tr></thead><tbody></tbody></table>');
+      const tb = tbl.querySelector('tbody');
+      for (const it of res.items) {
+        const tr = frag(`<tr><td class="mono" data-selectable style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(it.name)}">${escapeHtml(it.name)}</td><td class="num">${(it.size / 1048576).toFixed(1)} MB</td><td>${new Date(it.mtime).toLocaleString()}</td><td></td></tr>`);
+        const restore = button('Restore', { variant: 'ghost', sm: true, iconName: 'refresh' });
+        restore.addEventListener('click', async () => {
+          const ok = await confirmDialog({
+            title: 'Restore snapshot',
+            danger: true,
+            confirmLabel: 'Restore',
+            message: `Replace the live database with ${it.name}? The current database is snapshotted first, and the server must be stopped.`,
+          });
+          if (!ok) return;
+          const r = await window.host.backupRestore(it.name).catch((e) => ({ ok: false, error: String(e.message || e) }));
+          if (!r || !r.ok) { toast(r ? r.error : 'Restore failed', 'bad'); return; }
+          toast(`Restored ${r.restored}`, 'warn');
+          notifyRestart();
+          reloadSnapshots();
+        });
+        tr.lastElementChild.appendChild(restore);
+        tb.appendChild(tr);
+      }
+      snapBody.appendChild(tbl);
+    }
+
+    async function takeSnapshot() {
+      const r = await window.host.backupCreate('manual').catch((e) => ({ ok: false, error: String(e.message || e) }));
+      if (!r || !r.ok) { toast(r ? r.error : 'Snapshot failed', 'bad'); return; }
+      toast(`Snapshot saved (${(r.size / 1048576).toFixed(1)} MB)`, 'good');
+      reloadSnapshots();
+    }
 
     function sourceTag(info) {
       if (!info || !info.localSource) return null;
@@ -47,6 +103,7 @@ export default {
     }
 
     function paintHead(info) {
+      if (info && info.repo) repoSub.textContent = `${info.repo} - ${info.branch || 'main'}`;
       clear(headInfo);
       const row = el('div', { style: { display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', minWidth: '0' } });
       if (!info || !info.ok) {
@@ -160,7 +217,7 @@ export default {
     async function doCheck() {
       checkBtn.disabled = true;
       clear(resultBody);
-      resultBody.appendChild(spinnerRow('Checking origin/main...'));
+      resultBody.appendChild(spinnerRow('Checking origin...'));
       try {
         last = await window.host.updatesCheck();
         renderResult(last);

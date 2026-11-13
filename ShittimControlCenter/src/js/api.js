@@ -81,6 +81,7 @@ export const api = {
   },
 
   status: () => req('GET', '/api/admin/status'),
+  gearMeta: () => req('GET', '/api/admin/meta/gear'),
   accounts: () => req('GET', '/api/admin/accounts'),
   accountDetail: (id) => req('GET', `/api/admin/account/${id}/detail`),
   accountCreate: (b) => req('POST', '/api/admin/account/create', b),

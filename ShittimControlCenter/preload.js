@@ -33,6 +33,9 @@ contextBridge.exposeInMainWorld('host', {
   projectStatus: () => ipcRenderer.invoke('project:status'),
   projectDownload: (opts) => ipcRenderer.invoke('project:download', opts),
   projectSetPath: (dir) => ipcRenderer.invoke('project:setPath', dir),
+  backupCreate: (note) => ipcRenderer.invoke('backup:create', note),
+  backupList: () => ipcRenderer.invoke('backup:list'),
+  backupRestore: (name) => ipcRenderer.invoke('backup:restore', name),
 
   updatesCheck: () => ipcRenderer.invoke('updates:check'),
   updatesApply: () => ipcRenderer.invoke('updates:apply'),

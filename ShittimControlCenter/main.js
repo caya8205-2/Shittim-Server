@@ -398,7 +398,7 @@ async function runEnvChecks() {
 
 const US = '';
 
-const GH = { owner: 'Neoexm', repo: 'Shittim-Server', branch: 'main' };
+const GH = { owner: 'caya8205-2', repo: 'Shittim-Server', branch: 'main' };
 const GH_UA = 'ShittimControlCenter';
 const VERSION_FILE = 'shittim-version.json';
 
@@ -649,6 +649,7 @@ async function checkUpdates() {
   const remoteSha = remote.sha;
   const base = {
     ok: true, branch, localSource, repoRoot,
+    repo: `${GH.owner}/${GH.repo}`,
     remoteSha, remoteShort: remoteSha.slice(0, 7),
     remoteSubject: (remote.commit.message || '').split('\n')[0],
     remoteWhen: isoToRel(remote.commit.author && remote.commit.author.date),
@@ -1321,6 +1322,73 @@ ipcMain.handle('system:startOffline', async () => {
 ipcMain.handle('offline:status', () => ({ hosts: offlineHostsApplied(), hostnames: OFFLINE_HOSTS }));
 ipcMain.handle('offline:hosts', (_e, on) => setOfflineHosts(!!on));
 
+// Bulk console commands are not reversible from the UI, so a copy of the database is taken before
+// each one and kept beside the project for a one-click restore.
+const DB_SNAPSHOT_KEEP = 8;
+
+function dbSnapshotDir() {
+  const p = resolvePaths();
+  return path.join(p.repoRoot || APP_DIR, 'backups', 'db');
+}
+
+function serverIsRunning() {
+  return !!(procs.server && !procs.server.killed);
+}
+
+function createDbSnapshot(note = 'manual') {
+  const p = resolvePaths();
+  if (!p.dbPath || !fs.existsSync(p.dbPath)) {
+    return { ok: false, error: 'No database yet - it is created on the first server run.' };
+  }
+
+  const dir = dbSnapshotDir();
+  fs.mkdirSync(dir, { recursive: true });
+
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const safeNote = String(note || 'manual').replace(/[^a-z0-9_-]+/gi, '_').slice(0, 24);
+  const name = `shittim-${stamp}-${safeNote}.sqlite3`;
+  const dest = path.join(dir, name);
+  fs.copyFileSync(p.dbPath, dest);
+
+  // Keep the newest DB_SNAPSHOT_KEEP; a file held open by a crash is skipped rather than failing the copy.
+  const all = fs.readdirSync(dir).filter((f) => f.endsWith('.sqlite3')).sort();
+  for (const old of all.slice(0, Math.max(0, all.length - DB_SNAPSHOT_KEEP))) {
+    try { fs.unlinkSync(path.join(dir, old)); } catch { /* leftover, ignore */ }
+  }
+
+  return { ok: true, name, size: fs.statSync(dest).size, dir };
+}
+
+function listDbSnapshots() {
+  const dir = dbSnapshotDir();
+  if (!fs.existsSync(dir)) return { ok: true, dir, items: [] };
+
+  const items = fs.readdirSync(dir)
+    .filter((f) => f.endsWith('.sqlite3'))
+    .map((f) => {
+      const st = fs.statSync(path.join(dir, f));
+      return { name: f, size: st.size, mtime: st.mtimeMs };
+    })
+    .sort((a, b) => b.mtime - a.mtime);
+
+  return { ok: true, dir, items };
+}
+
+function restoreDbSnapshot(name) {
+  if (serverIsRunning()) return { ok: false, error: 'Stop the server before restoring a snapshot.' };
+
+  const p = resolvePaths();
+  if (!p.dbPath) return { ok: false, error: 'Server project not found.' };
+
+  const src = path.join(dbSnapshotDir(), path.basename(String(name || '')));
+  if (!fs.existsSync(src)) return { ok: false, error: 'Snapshot not found.' };
+
+  // Keep the current state too, so a restore can itself be undone.
+  createDbSnapshot('pre-restore');
+  fs.copyFileSync(src, p.dbPath);
+  return { ok: true, restored: path.basename(src) };
+}
+
 ipcMain.handle('project:status', () => projectStatus());
 ipcMain.handle('project:download', (_e, opts) => downloadProject(opts || {}));
 ipcMain.handle('project:setPath', (_e, dir) => setProjectPath(dir));
@@ -1329,6 +1397,9 @@ ipcMain.handle('updates:check', () => checkUpdates());
 ipcMain.handle('updates:apply', () => applyUpdate());
 ipcMain.handle('updates:rebuild', () => rebuildServer());
 ipcMain.handle('updates:checkSelf', () => checkSelfUpdate());
+ipcMain.handle('backup:create', (_e, note) => createDbSnapshot(note || 'manual'));
+ipcMain.handle('backup:list', () => listDbSnapshots());
+ipcMain.handle('backup:restore', (_e, name) => restoreDbSnapshot(name));
 ipcMain.handle('proc:status', () => ({
   server: procs.server && !procs.server.killed ? 'running' : (spawnFailed.server ? 'failed' : 'stopped'),
   mitm: procs.mitm && !procs.mitm.killed ? 'running' : (spawnFailed.mitm ? 'failed' : 'stopped'),
