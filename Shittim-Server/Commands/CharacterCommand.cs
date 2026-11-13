@@ -11,13 +11,13 @@ namespace Shittim.Commands
     {
         public CharacterCommand(IClientConnection connection, string[] args, bool validate = true) : base(connection, args, validate) { }
 
-        [Argument(0, @"^add$|^remove$|^help$|^show$|^modify$", "The operation selected (add, remove, show, modify)", ArgumentFlags.IgnoreCase | ArgumentFlags.Optional)]
+        [Argument(0, @"^add$|^remove$|^clear$|^help$|^show$|^modify$", "The operation selected (add, remove, clear, show, modify)", ArgumentFlags.IgnoreCase | ArgumentFlags.Optional)]
         public string Op { get; set; } = string.Empty;
 
         [Argument(1, @"^[0-9]+$|^all$", "The target character (all or characterID)", ArgumentFlags.Optional)]
         public string Target { get; set; } = string.Empty;
 
-        [Argument(2, @"^barebone$|^basic$|^ue30$|^ue50$|^max$|^level$|^star$|^skill$|^ps$", "Character options (basic, ue30, ue50, max) or modify options (level, star, skill, ps)", ArgumentFlags.Optional)]
+        [Argument(2, @"^barebone$|^basic$|^ue30$|^ue50$|^max$|^level$|^star$|^skill$|^ps$|^hard$", "Character options (basic, ue30, ue50, max, hard) or modify options (level, star, skill, ps)", ArgumentFlags.Optional)]
         public string Options { get; set; } = string.Empty;
 
         [Argument(3, @"^[0-9\s]+$", "Modification parameters", ArgumentFlags.Optional | ArgumentFlags.Remaining)]
@@ -42,7 +42,7 @@ namespace Shittim.Commands
 
             var characterDB = context.Characters;
             var options = string.IsNullOrEmpty(Options) ? "barebone" : Options;
-            List<string> optionList = ["barebone", "basic", "ue30", "ue50", "max", "level", "star", "skill", "ps"];
+            List<string> optionList = ["barebone", "basic", "ue30", "ue50", "max", "level", "star", "skill", "ps", "hard"];
 
             if (!optionList.Contains(options) && options.Length > 0 && !Op.ToLower().Equals("add"))
             {
@@ -65,7 +65,7 @@ namespace Shittim.Commands
                     }
                     else if (isValidId)
                     {
-                        if (characterDB.Any(x => x.UniqueId == characterId))
+                        if (characterDB.Any(x => x.AccountServerId == account.ServerId && x.UniqueId == characterId))
                         {
                             await connection.SendChatMessage($"{characterId} already exists!");
                             return;
@@ -100,6 +100,18 @@ namespace Shittim.Commands
                         return;
                     }
                     break;
+
+                case "clear":
+                {
+                    // "hard" keeps only the lobby student (the favourite in DefaultCharacterExcel), so a
+                    // roster can be emptied without leaving the account without a character to display.
+                    var keepOnlyLobby = options.Equals("hard", StringComparison.OrdinalIgnoreCase);
+                    var result = await InventoryGM.ClearCharacters(connection, keepOnlyLobby);
+                    await connection.SendChatMessage(keepOnlyLobby
+                        ? $"Cleared {result.Removed} students; kept only {result.Kept} (this account's lobby student)."
+                        : $"Cleared {result.Removed} students; kept {result.Kept}, reset to their default state.");
+                    break;
+                }
 
                 case "modify":
                     if (Target == "all")
@@ -142,7 +154,8 @@ namespace Shittim.Commands
         {
             await connection.SendChatMessage("!character - Command to interact with user's characters");
             await connection.SendChatMessage("Usage: !character [command] [characterID] [options] [parameters]");
-            await connection.SendChatMessage("Command: add | remove | modify | show");
+            await connection.SendChatMessage("Command: add | remove | clear | modify | show");
+            await connection.SendChatMessage("  clear [all] [hard] - clear the roster; hard keeps only the lobby student");
             await connection.SendChatMessage("CharacterID: all | characterID");
             await connection.SendChatMessage("Options for add: barebone | basic | ue30 | ue50 | max");
             await connection.SendChatMessage("Options for modify:");

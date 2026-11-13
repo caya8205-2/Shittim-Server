@@ -431,6 +431,91 @@ namespace Shittim.GameMasters
             await connection.SendChatMessage("Added all Emblems!");
         }
 
+        // Clears the roster. Everything bound to a removed student (weapon, equipment, gear) is removed
+        // with it so no orphan rows survive; the kept students are reset to their default state. With
+        // keepOnlyLobby the roster is emptied down to the lobby student, which the account screen needs.
+        public static async Task<(int Removed, int Reset, string Kept)> ClearCharacters(IClientConnection connection, bool keepOnlyLobby)
+        {
+            using var context = await connection.Context.CreateDbContextAsync();
+            var account = context.GetAccount(connection.AccountServerId);
+            var characterExcel = connection.ExcelTableService.GetTable<CharacterExcelT>();
+            var defaultCharacters = connection.ExcelTableService.GetTable<DefaultCharacterExcelT>();
+
+            var lobbyIds = defaultCharacters.Where(x => x.FavoriteCharacter).Select(x => x.CharacterId).ToList();
+            var starterIds = defaultCharacters.Select(x => x.CharacterId).ToList();
+
+            var owned = context.GetAccountCharacters(connection.AccountServerId).ToList();
+
+            // The lobby student is per account: older accounts were created with Hasumi, newer ones with
+            // Yuuka. The account row is the source of truth; the Excel flag is only the fallback.
+            var lobbyUniqueId = owned.FirstOrDefault(x => x.ServerId == account.RepresentCharacterServerId)?.UniqueId;
+            if (lobbyUniqueId is null or 0)
+                lobbyUniqueId = defaultCharacters.FirstOrDefault(x => x.FavoriteCharacter)?.CharacterId;
+
+            var lobbyKeepIds = lobbyUniqueId is > 0 ? new List<long> { lobbyUniqueId.Value } : lobbyIds;
+            var keepIds = keepOnlyLobby && lobbyKeepIds.Count > 0 ? lobbyKeepIds : starterIds;
+            var doomed = owned.Where(x => !keepIds.Contains(x.UniqueId)).ToList();
+            var doomedServerIds = doomed.Select(x => x.ServerId).ToList();
+
+            if (doomedServerIds.Count > 0)
+            {
+                var weapons = context.Weapons
+                    .Where(x => x.AccountServerId == connection.AccountServerId && doomedServerIds.Contains(x.BoundCharacterServerId))
+                    .ToList();
+                context.Weapons.RemoveRange(weapons);
+
+                var equipments = context.GetAccountEquipments(connection.AccountServerId)
+                    .Where(x => doomedServerIds.Contains(x.BoundCharacterServerId))
+                    .ToList();
+                context.Equipments.RemoveRange(equipments);
+
+                var gears = context.Gears
+                    .Where(x => x.AccountServerId == connection.AccountServerId && doomedServerIds.Contains(x.BoundCharacterServerId))
+                    .ToList();
+                context.Gears.RemoveRange(gears);
+
+                context.Characters.RemoveRange(doomed);
+
+                // The lobby character is stored on the account: point it at a kept student instead of
+                // leaving a reference to a row that no longer exists.
+                if (account.RepresentCharacterServerId != 0 && doomedServerIds.Contains(account.RepresentCharacterServerId))
+                {
+                    var fallback = owned.FirstOrDefault(x => keepIds.Contains(x.UniqueId) && lobbyKeepIds.Contains(x.UniqueId))
+                        ?? owned.FirstOrDefault(x => keepIds.Contains(x.UniqueId));
+                    if (fallback != null)
+                        account.RepresentCharacterServerId = (int)fallback.ServerId;
+                }
+            }
+
+            var reset = 0;
+            foreach (var character in owned.Where(x => keepIds.Contains(x.UniqueId)))
+            {
+                var data = characterExcel.FirstOrDefault(x => x.Id == character.UniqueId);
+                character.Level = 1;
+                character.Exp = 0;
+                character.StarGrade = data != null ? data.DefaultStarGrade : character.StarGrade;
+                character.FavorRank = 1;
+                character.FavorExp = 0;
+                character.PublicSkillLevel = 1;
+                character.ExSkillLevel = 1;
+                character.PassiveSkillLevel = 1;
+                character.ExtraPassiveSkillLevel = 1;
+                character.PotentialStats = new Dictionary<int, int> { { 1, 0 }, { 2, 0 }, { 3, 0 } };
+                character.EquipmentServerIds = [0, 0, 0];
+                context.Characters.Update(character);
+                reset++;
+            }
+
+            var keptNames = owned
+                .Where(x => keepIds.Contains(x.UniqueId))
+                .Select(x => characterExcel.FirstOrDefault(d => d.Id == x.UniqueId)?.DevName)
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .ToList();
+
+            await context.SaveChangesAsync();
+            return (doomed.Count, reset, string.Join(", ", keptNames));
+        }
+
         public static async Task RemoveAllCharacters(IClientConnection connection)
         {
             using var context = await connection.Context.CreateDbContextAsync();

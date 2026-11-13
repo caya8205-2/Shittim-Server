@@ -139,34 +139,61 @@ namespace Shittim.GameMasters
             }
         }
 
-        public async static Task AddEquipment(SchaleDataContext context, AccountDBServer account, uint characterId)
+        public async static Task AddEquipment(SchaleDataContext context, AccountDBServer account, uint characterId, bool onlyEmptySlots = false)
         {
             var characterEquipmentData = characterExcel.GetCharacter(characterId);
             var charEquipmentData = context.Characters.FirstOrDefault(y => y.AccountServerId == account.ServerId && y.UniqueId == characterEquipmentData.Id);
-            if (characterEquipmentData != null)
+            if (characterEquipmentData == null || charEquipmentData == null)
+                return;
+
+            var slots = characterEquipmentData.EquipmentSlot;
+            var newEquipment = new List<EquipmentDBServer>();
+            var slotIndexes = new List<int>();
+
+            for (var slot = 0; slot < slots.Count; slot++)
             {
-                var characterEquipment = characterEquipmentData.EquipmentSlot.Select(x =>
+                // A preset applied to a student that already wears gear must not silently replace it.
+                if (onlyEmptySlots && slot < charEquipmentData.EquipmentServerIds.Count && charEquipmentData.EquipmentServerIds[slot] != 0)
+                    continue;
+
+                var equipmentData = equipmentExcel
+                    .GetEquipmentExcelByCategory(slots[slot])
+                    .GetCharacterEquipment()
+                    .OrderByDescending(y => y.MaxLevel)
+                    .FirstOrDefault();
+
+                if (equipmentData == null)
+                    continue;
+
+                newEquipment.Add(new EquipmentDBServer()
                 {
-                    var equipmentData = equipmentExcel
-                        .GetEquipmentExcelByCategory(x)
-                        .GetCharacterEquipment()
-                        .OrderByDescending(y => y.MaxLevel)
-                        .FirstOrDefault();
-                    return new EquipmentDBServer()
-                    {
-                        UniqueId = equipmentData.Id,
-                        Level = equipmentData.MaxLevel,
-                        Tier = (int)equipmentData.TierInit,
-                        StackCount = 1,
-                        BoundCharacterServerId = charEquipmentData.ServerId
-                    };
-                }).ToList();
-                context.AddEquipment(account.ServerId, [.. characterEquipment]);
-                await context.SaveChangesAsync();
-                charEquipmentData.EquipmentServerIds.Clear();
-                charEquipmentData.EquipmentServerIds.AddRange(characterEquipment.Select(x => x.ServerId));
-                await context.SaveChangesAsync();
+                    UniqueId = equipmentData.Id,
+                    Level = equipmentData.MaxLevel,
+                    Tier = (int)equipmentData.TierInit,
+                    StackCount = 1,
+                    BoundCharacterServerId = charEquipmentData.ServerId
+                });
+                slotIndexes.Add(slot);
             }
+
+            context.AddEquipment(account.ServerId, [.. newEquipment]);
+            await context.SaveChangesAsync();
+
+            if (onlyEmptySlots)
+            {
+                while (charEquipmentData.EquipmentServerIds.Count < slots.Count)
+                    charEquipmentData.EquipmentServerIds.Add(0);
+
+                for (var i = 0; i < newEquipment.Count; i++)
+                    charEquipmentData.EquipmentServerIds[slotIndexes[i]] = newEquipment[i].ServerId;
+            }
+            else
+            {
+                charEquipmentData.EquipmentServerIds.Clear();
+                charEquipmentData.EquipmentServerIds.AddRange(newEquipment.Select(x => x.ServerId));
+            }
+
+            await context.SaveChangesAsync();
         }
 
         public async static Task AddGear(SchaleDataContext context, AccountDBServer account, uint characterId)
@@ -242,7 +269,7 @@ namespace Shittim.GameMasters
             if (context.Characters.Any(x => x.AccountServerId == account.ServerId && x.UniqueId == characterId))
             {
                 var character = context.Characters.FirstOrDefault(x => x.AccountServerId == account.ServerId && x.UniqueId == characterId);
-                character.StarGrade = starGrade == 0 ? starGrade : chData.DefaultStarGrade;
+                character.StarGrade = starGrade == 0 ? chData.DefaultStarGrade : starGrade;
                 character.Level = starGrade == 0 ? 1 : characterLevelExcel.Count;
                 character.Exp = 0;
                 character.ExSkillLevel = useOptions ? 5 : 1;
@@ -261,7 +288,7 @@ namespace Shittim.GameMasters
                 var characterDB = new CharacterDBServer()
                 {
                     UniqueId = characterId,
-                    StarGrade = starGrade == 0 ? starGrade : chData.DefaultStarGrade,
+                    StarGrade = starGrade == 0 ? chData.DefaultStarGrade : starGrade,
                     Level = starGrade == 0 ? 1 : characterLevelExcel.Count,
                     Exp = 0,
                     ExSkillLevel = useOptions ? 5 : 1,
@@ -283,7 +310,7 @@ namespace Shittim.GameMasters
             if (useOptions && weaponLevel != 1)
                 await AddWeapon(context, account, characterId, weaponLevel);
             if (useOptions && useEquipment)
-                await AddEquipment(context, account, characterId);
+                await AddEquipment(context, account, characterId, onlyEmptySlots: true);
             if (useOptions && useGear && uniqueGearExcel.Any(x => x.CharacterId == characterId))
                 await AddGear(context, account, characterId);
         }

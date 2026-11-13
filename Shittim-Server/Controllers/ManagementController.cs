@@ -352,6 +352,10 @@ public class ManagementController : ControllerBase
         var chars = _excel.GetTable<CharacterExcelT>();
         var names = NameMap(chars.ToDictionary(x => x.Id, x => x.LocalizeEtcId));
         var dev = chars.ToDictionary(x => x.Id, x => x.DevName);
+        // Base and ceiling rarity travel with the row so the UI can bound its star slider per student:
+        // pulling a 3★ below its own rarity is not a state the game can represent.
+        var defaultStars = chars.ToDictionary(x => x.Id, x => x.DefaultStarGrade);
+        var maxStars = chars.ToDictionary(x => x.Id, x => x.MaxStarGrade);
 
         return Ok(rows.Select(r => new
         {
@@ -360,6 +364,8 @@ public class ManagementController : ControllerBase
             r.StarGrade,
             r.Level,
             r.FavorRank,
+            defaultStar = defaultStars.TryGetValue(r.UniqueId, out var ds) ? ds : 1,
+            maxStar = maxStars.TryGetValue(r.UniqueId, out var ms) ? ms : 5,
             devName = dev.TryGetValue(r.UniqueId, out var dn) ? dn : null,
             name = names.TryGetValue(r.UniqueId, out var n) && !string.IsNullOrWhiteSpace(n)
                 ? n
@@ -522,6 +528,17 @@ public class ManagementController : ControllerBase
         }
 
         return Ok(results.Take(Math.Clamp(limit, 1, 2000)));
+    }
+
+    [HttpGet("meta/gear")]
+    public IActionResult GearMeta()
+    {
+        // Highest equipment level and tier in the tables, so the UI sliders cannot offer something no item has.
+        var equipment = _excel.GetTable<EquipmentExcelT>();
+        var maxLevel = equipment.Where(x => x.MaxLevel > 0).Select(x => x.MaxLevel).DefaultIfEmpty(1).Max();
+        var maxTier = equipment.Select(x => (int)x.TierInit).DefaultIfEmpty(1).Max();
+
+        return Ok(new { maxLevel, maxTier });
     }
 
     [HttpGet("static/equipment")]
