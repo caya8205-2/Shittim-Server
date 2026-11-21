@@ -1,0 +1,388 @@
+{
+  "version": 2,
+  "comment": "Squads for placeholder leaderboards. Ids are CharacterExcelT ids (strikers below 20000, specials from 20000). Lookup order: exact board key -> totalAssault -> default. Per-boss raid entries are drafts and have not been validated in game.",
+  "boards": {
+    "binah": [
+      {
+        "label": "Binah A - Mika burst (verified)",
+        "strikers": [
+          10059,
+          10058,
+          10007,
+          13000
+        ],
+        "specials": [
+          20054,
+          20008
+        ]
+      },
+      {
+        "label": "Binah B - Neru duo (verified)",
+        "strikers": [
+          10111,
+          10098,
+          10088,
+          10089
+        ],
+        "specials": [
+          20048,
+          20041
+        ]
+      }
+    ],
+    "kaiten": [
+      {
+        "label": "Kaiten A - Mika burst (draft, unverified)",
+        "strikers": [
+          10059,
+          10058,
+          10007,
+          13000
+        ],
+        "specials": [
+          20054,
+          20008
+        ]
+      },
+      {
+        "label": "Kaiten B - Hina dress piercing (draft, unverified)",
+        "strikers": [
+          10086,
+          10023,
+          10019,
+          10020
+        ],
+        "specials": [
+          20008,
+          26000
+        ]
+      }
+    ],
+    "hod": [
+      {
+        "label": "Hod A - Mika burst with Ui cost down (draft, unverified)",
+        "strikers": [
+          10059,
+          10035,
+          10007,
+          13000
+        ],
+        "specials": [
+          20054,
+          20008
+        ]
+      },
+      {
+        "label": "Hod B - Aris armed multi hit (draft, unverified)",
+        "strikers": [
+          10134,
+          10015,
+          13011,
+          10016
+        ],
+        "specials": [
+          20055,
+          23007
+        ]
+      }
+    ],
+    "chesed": [
+      {
+        "label": "Chesed A - area damage core (draft, unverified)",
+        "strikers": [
+          10031,
+          13006,
+          10002,
+          10003
+        ],
+        "specials": [
+          20008,
+          20020
+        ]
+      },
+      {
+        "label": "Chesed B - Wakamo splash (draft, unverified)",
+        "strikers": [
+          10057,
+          10064,
+          10033,
+          13005
+        ],
+        "specials": [
+          20042,
+          23004
+        ]
+      }
+    ],
+    "shirokuro": [
+      {
+        "label": "ShiroKuro A - Mika burst (verified)",
+        "strikers": [
+          10059,
+          10058,
+          10007,
+          13000
+        ],
+        "specials": [
+          20054,
+          20008
+        ]
+      },
+      {
+        "label": "ShiroKuro B - Rapid Rabbit cycle (draft, unverified)",
+        "strikers": [
+          10024,
+          10045,
+          10038,
+          10041
+        ],
+        "specials": [
+          20027,
+          20048
+        ]
+      }
+    ],
+    "hieronymus": [
+      {
+        "label": "Hieronymus A - Mika burst (draft, unverified)",
+        "strikers": [
+          10059,
+          10058,
+          10007,
+          13000
+        ],
+        "specials": [
+          20054,
+          20008
+        ]
+      },
+      {
+        "label": "Hieronymus B - sustain and holy damage (draft, unverified)",
+        "strikers": [
+          10021,
+          10020,
+          10036,
+          10013
+        ],
+        "specials": [
+          26003,
+          20008
+        ]
+      }
+    ],
+    "goz": [
+      {
+        "label": "Goz A - Mika burst (draft, unverified)",
+        "strikers": [
+          10059,
+          10058,
+          10007,
+          13000
+        ],
+        "specials": [
+          20054,
+          20008
+        ]
+      },
+      {
+        "label": "Goz B - RABBIT mobility (draft, unverified)",
+        "strikers": [
+          10038,
+          10039,
+          10041,
+          10024
+        ],
+        "specials": [
+          20054,
+          20041
+        ]
+      }
+    ],
+    "hovercraft": [
+      {
+        "label": "Hovercraft A - Gehenna swimsuit burst (draft, unverified)",
+        "strikers": [
+          10022,
+          10023,
+          10021,
+          10020
+        ],
+        "specials": [
+          20008,
+          20020
+        ]
+      },
+      {
+        "label": "Hovercraft B - Mika burst (draft, unverified)",
+        "strikers": [
+          10059,
+          10058,
+          10007,
+          13000
+        ],
+        "specials": [
+          20054,
+          20041
+        ]
+      }
+    ],
+    "perorodzilla": [
+      {
+        "label": "Perorodzilla A - New Year splash (draft, unverified)",
+        "strikers": [
+          13006,
+          10031,
+          10057,
+          10064
+        ],
+        "specials": [
+          20008,
+          20020
+        ]
+      },
+      {
+        "label": "Perorodzilla B - Mika burst (draft, unverified)",
+        "strikers": [
+          10059,
+          10058,
+          10007,
+          13000
+        ],
+        "specials": [
+          20054,
+          20008
+        ]
+      }
+    ],
+    "grandAssault": [],
+    "jointFiring": [],
+    "finalRestriction": [],
+    "totalAssault": {
+      "torment": [
+        {
+          "label": "Torment 1 - Mika carry (verified)",
+          "strikers": [
+            10059,
+            10007,
+            13000,
+            10035
+          ],
+          "specials": [
+            20020,
+            20008
+          ]
+        },
+        {
+          "label": "Torment 2 - Neru duo (verified)",
+          "strikers": [
+            10058,
+            10008,
+            10111,
+            10110
+          ],
+          "specials": [
+            20054,
+            20048
+          ]
+        }
+      ],
+      "lunatic": [
+        {
+          "label": "Lunatic 1 (verified)",
+          "strikers": [
+            10059,
+            13000,
+            10050,
+            10007
+          ],
+          "specials": [
+            20048,
+            20039
+          ]
+        },
+        {
+          "label": "Lunatic 2 (verified)",
+          "strikers": [
+            10096,
+            10111,
+            10123,
+            10089
+          ],
+          "specials": [
+            20041,
+            20054
+          ]
+        }
+      ]
+    },
+    "pvp": [
+      {
+        "label": "PvP A - Mika burst defence",
+        "strikers": [
+          10059,
+          10008,
+          10111,
+          10007
+        ],
+        "specials": [
+          20008,
+          20020
+        ]
+      },
+      {
+        "label": "PvP B - Gehenna burst",
+        "strikers": [
+          10086,
+          10022,
+          10023,
+          10020
+        ],
+        "specials": [
+          20008,
+          26000
+        ]
+      },
+      {
+        "label": "PvP C - Rapid Rabbit",
+        "strikers": [
+          10024,
+          10045,
+          10038,
+          10041
+        ],
+        "specials": [
+          20027,
+          20048
+        ]
+      },
+      {
+        "label": "PvP D - Arius mixed",
+        "strikers": [
+          10021,
+          10020,
+          10036,
+          10013
+        ],
+        "specials": [
+          26003,
+          20008
+        ]
+      }
+    ],
+    "default": [
+      {
+        "label": "Fallback squad",
+        "strikers": [
+          10059,
+          10007,
+          13000,
+          10035
+        ],
+        "specials": [
+          20020,
+          20008
+        ]
+      }
+    ]
+  }
+}

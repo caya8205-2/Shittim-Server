@@ -5,6 +5,7 @@ using Schale.Data;
 using Schale.Data.GameModel;
 using Schale.Data.ModelMapping;
 using Schale.MX.GameLogic.DBModel;
+using Schale.MX.Logic.Battles.Summary;
 using Schale.MX.NetworkProtocol;
 using Schale.MX.GameLogic.Parcel;
 using Schale.FlatData;
@@ -17,24 +18,31 @@ public class ArenaHandler : ProtocolHandlerBase
 {
     // Fallback accrual when the ArenaRewardExcel Time row is absent from the shipped data.
     private const long DefaultTimeRewardGoldPerHour = 10000;
+
+    // Ladder position for an account that has never won a battle: mid-table, so the first opponents are
+    // not the fully maxed top ten.
+    private const long DefaultArenaRank = 30;
     private const int TimeRewardAccrualCapHours = 24;
 
     private readonly ISessionKeyService _sessionService;
     private readonly ExcelTableService _excelService;
     private readonly ParcelHandler _parcelHandler;
     private readonly IMapper _mapper;
+    private readonly LeaderboardPresetsService _presets;
 
     public ArenaHandler(
         IProtocolHandlerRegistry registry,
         ISessionKeyService sessionService,
         ExcelTableService excelService,
         ParcelHandler parcelHandler,
-        IMapper mapper) : base(registry)
+        IMapper mapper,
+        LeaderboardPresetsService presets) : base(registry)
     {
         _sessionService = sessionService;
         _excelService = excelService;
         _parcelHandler = parcelHandler;
         _mapper = mapper;
+        _presets = presets;
     }
 
     private ArenaPlayerInfoDB BuildPlayerInfo(AccountDBServer account)
@@ -46,7 +54,7 @@ public class ArenaHandler : ProtocolHandlerBase
         {
             CurrentSeasonId = info.SeasonId,
             PlayerGroupId = 1,
-            CurrentRank = 1,
+            CurrentRank = StoredRank(account),
             SeasonRecord = 1,
             AllTimeRecord = 1,
             CumulativeTimeReward = AccruedTimeReward(account),
@@ -54,6 +62,75 @@ public class ArenaHandler : ProtocolHandlerBase
             BattleEnterActiveTime = info.BattleEnterActiveTime ?? now,
             DailyRewardActiveTime = NextDailyRewardActiveTime(account)
         };
+    }
+
+    // The client sends BattleSummary with every hero ServerId set to 0, and the result screen looks those
+    // ids up to draw the squad cards. Filling them from the battle teams is what turns the empty level-53
+    // placeholders into the actual students.
+    // Squad entries coming back from the client have ServerId 0; the result screen resolves its cards by
+    // that id, so it is rebuilt from the account's own character rows by unique id.
+    private static void RepairTeamServerIds(SchaleDataContext db, long accountServerId, ArenaTeamSettingDB team)
+    {
+        var owned = db.GetAccountCharacters(accountServerId).ToList();
+
+        foreach (var group in new[] { team.MainCharacters, team.SupportCharacters })
+        {
+            if (group == null)
+                continue;
+
+            foreach (var character in group)
+            {
+                if (character.ServerId > 0)
+                    continue;
+
+                var match = owned.FirstOrDefault(c => c.UniqueId == character.UniqueId);
+                if (match != null)
+                    character.ServerId = match.ServerId;
+            }
+        }
+    }
+
+    private static void HydrateBattleSummary(BattleSummary summary, ArenaUserDB? attacker, ArenaUserDB? defender)
+    {
+        HydrateGroup(summary.Group01Summary, attacker);
+        HydrateGroup(summary.Group02Summary, defender);
+    }
+
+    private static void HydrateGroup(GroupSummary? group, ArenaUserDB? user)
+    {
+        var team = user?.TeamSettingDB;
+        if (group == null || team == null)
+            return;
+
+        var roster = new List<ArenaCharacterDB>();
+        if (team.MainCharacters != null)
+            roster.AddRange(team.MainCharacters);
+        if (team.SupportCharacters != null)
+            roster.AddRange(team.SupportCharacters);
+
+        HydrateCollection(group.Heroes, roster, user!.AccountServerId);
+        HydrateCollection(group.Supporters, roster, user.AccountServerId);
+    }
+
+    private static void HydrateCollection(HeroSummaryCollection? heroes, List<ArenaCharacterDB> roster, long accountServerId)
+    {
+        if (heroes == null)
+            return;
+
+        foreach (var hero in heroes)
+        {
+            hero.OwnerAccountId = accountServerId;
+
+            var match = roster.FirstOrDefault(x => x.UniqueId == hero.CharacterId);
+            if (match != null)
+                hero.ServerId = match.ServerId;
+        }
+    }
+
+    private static long StoredRank(AccountDBServer account)
+    {
+        var rank = account.ContentInfo.ArenaDataInfo.Rank;
+        return rank > 0 ? rank : DefaultArenaRank;
     }
 
     private long AccruedTimeReward(AccountDBServer account)
@@ -108,9 +185,14 @@ public class ArenaHandler : ProtocolHandlerBase
     {
         var account = await _sessionService.GetAuthenticatedUser(db, request.SessionKey);
 
+        // Three rows directly above the player's rank, which is what the ladder offers in game.
+        var window = Math.Max(1, StoredRank(account) - 3);
+        var nonce = Random.Shared.Next(0, 900);
+
         response.ArenaPlayerInfoDB = BuildPlayerInfo(account);
-        response.OpponentUserDBs = ArenaService.CreateOpponents(db, account, _mapper);
+        response.OpponentUserDBs = ArenaService.CreateOpponents(db, account, _mapper, _presets, (int)window, nonce);
         response.MapId = 1001;
+        ArenaDump.Write("enter-lobby", response.OpponentUserDBs);
 
         return response;
     }
@@ -123,8 +205,12 @@ public class ArenaHandler : ProtocolHandlerBase
     {
         var account = await _sessionService.GetAuthenticatedUser(db, request.SessionKey);
 
-        response.PlayerRank = 1;
-        response.OpponentUserDBs = ArenaService.CreateOpponents(db, account, _mapper);
+        var window = Math.Max(1, StoredRank(account) - 3);
+        var nonce = Random.Shared.Next(0, 900);
+
+        response.PlayerRank = StoredRank(account);
+        response.OpponentUserDBs = ArenaService.CreateOpponents(db, account, _mapper, _presets, (int)window, nonce);
+        ArenaDump.Write("opponent-list", response.OpponentUserDBs);
 
         return response;
     }
@@ -150,52 +236,75 @@ public class ArenaHandler : ProtocolHandlerBase
     {
         var account = await _sessionService.GetAuthenticatedUser(db, request.SessionKey);
 
-        var attackingUser = new ArenaUserDB
-        {
-            AccountServerId = account.ServerId,
-            NickName = account.Nickname ?? "Player",
-            Rank = 1,
-            Level = account.Level,
-            RepresentCharacterUniqueId = account.RepresentCharacterServerId,
-            AccountAttachmentDB = db.GetAccountAttachments(account.ServerId).FirstMapTo(_mapper),
-            TeamSettingDB = ArenaService.CreateArenaTeamSetting(db, account, _mapper, false)
-        };
-
-        var opponentAccount = await db.Accounts.FirstOrDefaultAsync(x => x.ServerId == request.OpponentAccountServerId);
-        
-        ArenaUserDB defendingUser;
-        if (opponentAccount != null)
-        {
-            defendingUser = ArenaService.CreateArenaUser(
-                opponentAccount.ServerId,
-                opponentAccount.RepresentCharacterServerId,
-                opponentAccount.Nickname ?? "Opponent",
-                request.OpponentRank,
-                opponentAccount.Level,
-                ArenaService.CreateArenaTeamSetting(db, opponentAccount, _mapper, true));
-        }
-        else
-        {
-            defendingUser = ArenaService.CreateArenaUser(
-                request.OpponentAccountServerId,
-                10065,
-                "Dummy Opponent",
-                request.OpponentRank,
-                90,
-                ArenaService.DummyTeamFormation);
-        }
-
         response.ArenaBattleDB = new ArenaBattleDB
         {
             Season = 1,
             Group = 1,
             BattleStartTime = account.GameSettings.ServerDateTime(),
             Seed = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-            AttackingUserDB = attackingUser,
-            DefendingUserDB = defendingUser
+            AttackingUserDB = BuildAttackingUser(db, account),
+            DefendingUserDB = await BuildDefendingUser(db, account, request.OpponentAccountServerId, request.OpponentRank)
         };
 
+        ArenaDump.Write("battle-part1", response.ArenaBattleDB);
+
         return response;
+    }
+
+    // The attacker's own squad: the client resolves these characters from its own account data.
+    private ArenaUserDB BuildAttackingUser(SchaleDataContext db, AccountDBServer account) => new()
+    {
+        AccountServerId = account.ServerId,
+        NickName = account.Nickname ?? "Player",
+        Rank = 1,
+        Level = account.Level,
+        RepresentCharacterUniqueId = account.RepresentCharacterServerId,
+        AccountAttachmentDB = db.GetAccountAttachments(account.ServerId).FirstMapTo(_mapper),
+        TeamSettingDB = ArenaService.CreateArenaTeamSetting(db, account, _mapper, false)
+    };
+
+    // Defending squad for one opponent id: a real account, a placeholder id from the ranking list, or the
+    // legacy dummy. Placeholder squads are regenerated from the same seed the list used.
+    private async Task<ArenaUserDB> BuildDefendingUser(
+        SchaleDataContext db,
+        AccountDBServer account,
+        long opponentAccountServerId,
+        long opponentRank)
+    {
+        var opponentAccount = await db.Accounts.FirstOrDefaultAsync(x => x.ServerId == opponentAccountServerId);
+
+        if (opponentAccount != null)
+        {
+            return ArenaService.CreateArenaUser(
+                opponentAccount.ServerId,
+                opponentAccount.RepresentCharacterServerId,
+                opponentAccount.Nickname ?? "Opponent",
+                opponentRank,
+                opponentAccount.Level,
+                ArenaService.CreateArenaTeamSetting(db, opponentAccount, _mapper, true));
+        }
+
+        if (opponentAccountServerId >= ArenaService.MockAccountIdFloor)
+        {
+            var squads = _presets.Squads("pvp");
+            var team = ArenaService.BuildArenaTeam(db, account, _mapper, squads, opponentAccountServerId, opponentRank);
+
+            return ArenaService.CreateArenaUser(
+                opponentAccountServerId,
+                team?.LeaderCharacterId ?? 0,
+                ArenaService.MockName(opponentAccountServerId),
+                opponentRank,
+                90,
+                team ?? ArenaService.DummyTeamFormation);
+        }
+
+        return ArenaService.CreateArenaUser(
+            opponentAccountServerId,
+            10065,
+            "Dummy Opponent",
+            opponentRank,
+            90,
+            ArenaService.DummyTeamFormation);
     }
 
     [ProtocolHandler(Protocol.Arena_EnterBattlePart2)]
@@ -206,8 +315,36 @@ public class ArenaHandler : ProtocolHandlerBase
     {
         var account = await _sessionService.GetAuthenticatedUser(db, request.SessionKey);
 
-        response.ArenaBattleDB = request.ArenaBattleDB;
+        ArenaDump.Write("battle-part2-request", request.ArenaBattleDB);
+
+        // The result screen is drawn from this payload, so rebuild any squad the client sent back thin
+        // instead of echoing it: a missing team would render as empty level-53 cards.
+        var battle = request.ArenaBattleDB ?? new ArenaBattleDB();
+
+        if (battle.AttackingUserDB?.TeamSettingDB?.MainCharacters is not { Count: > 0 })
+            battle.AttackingUserDB = BuildAttackingUser(db, account);
+
+        if (battle.DefendingUserDB?.TeamSettingDB?.MainCharacters is not { Count: > 0 })
+        {
+            var opponentId = battle.DefendingUserDB?.AccountServerId ?? 0;
+            var opponentRank = battle.DefendingUserDB?.Rank ?? 1;
+            battle.DefendingUserDB = await BuildDefendingUser(db, account, opponentId, opponentRank);
+        }
+
+        // The client's copies of both squads also arrive with ServerId 0, so repair them first, otherwise
+        // the summary has nothing to point at and the result cards stay empty.
+        if (battle.AttackingUserDB?.TeamSettingDB is { } attackingTeam)
+            RepairTeamServerIds(db, account.ServerId, attackingTeam);
+
+        if (battle.DefendingUserDB?.TeamSettingDB is { } defendingTeam)
+            RepairTeamServerIds(db, account.ServerId, defendingTeam);
+
+        if (battle.BattleSummary != null)
+            HydrateBattleSummary(battle.BattleSummary, battle.AttackingUserDB, battle.DefendingUserDB);
+
+        response.ArenaBattleDB = battle;
         response.ArenaPlayerInfoDB = BuildPlayerInfo(account);
+        ArenaDump.Write("battle-part2-response", response.ArenaBattleDB);
 
         var ticketCost = _excelService.GetTable<ConstArenaExcelT>().FirstOrDefault()?.TicketCost ?? 1;
         if (ticketCost <= 0) ticketCost = 1;
@@ -436,7 +573,25 @@ public class ArenaHandler : ProtocolHandlerBase
         ArenaBattleResultRequest request,
         ArenaBattleResultResponse response)
     {
-        await _sessionService.GetAuthenticatedUser(db, request.SessionKey);
+        var account = await _sessionService.GetAuthenticatedUser(db, request.SessionKey);
+        ArenaDump.Write("battle-result-request", request.ArenaBattleDB);
+
+        var battle = request.ArenaBattleDB;
+        var summary = battle?.BattleSummary;
+
+        if (summary != null && summary.Winner == Schale.MX.Logic.Battles.GroupTag.Group01)
+        {
+            var opponentRank = battle?.DefendingUserDB?.Rank ?? 0;
+            var currentRank = StoredRank(account);
+
+            // Winning against a higher ranked opponent takes over their position, which is how the ladder
+            // is climbed in game.
+            if (opponentRank > 0 && opponentRank < currentRank)
+                account.ContentInfo.ArenaDataInfo.Rank = opponentRank;
+
+            await db.SaveChangesAsync();
+        }
+
         return response;
     }
 

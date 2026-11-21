@@ -47,11 +47,13 @@ namespace BlueArchiveAPI.Configuration.ConfigType
         public bool KoyukiIncident { get; set; } = false;
         // Base url of the shared world raid coordinator. Empty means no coordinator: the raid still runs off whatever manifest is cached (or dropped) in worldraid_manifest.json, just with a purely local HP pool. Point every install at the same coordinator and they all chip away at one pool.
         public string WorldRaidCoordinatorUrl { get; set; } = "https://raid.shittem-server.com";
-        public bool AutoCheckVersion { get; set; } = true;
-        public bool AutoUpdateVersion { get; set; } = true;
+        // This fork supports the 1.93 client line. Never resolve the CDN's latest build automatically:
+        // its ExcelDB key rotates independently and becomes unreadable to this client's bundled key.
+        public bool AutoCheckVersion { get; set; } = false;
+        public bool AutoUpdateVersion { get; set; } = false;
         public bool AutoUpdateResources { get; set; } = true;
-        public string? OverrideVersionId { get; set; }
-        public string? OverrideCdnBaseUrl { get; set; }
+        public string? OverrideVersionId { get; set; } = "e3ec4c1e969240ff";
+        public string? OverrideCdnBaseUrl { get; set; } = "https://ba.dn.nexoncdn.co.kr/com.nexon.bluearchive/e3ec4c1e969240ff";
         // Shared secret for the /api/admin surface, sent by the client as an X-Admin-Key header and overridable per-machine with SHITTIM_ADMIN_API_KEY.
         // Empty by default, which restricts admin endpoints to loopback (see AdminAuthAttribute) - enough for the Control Center, which connects to 127.0.0.1. Set this only if you need to administer the server remotely.
         public string AdminApiKey { get; set; } = "";
@@ -59,6 +61,10 @@ namespace BlueArchiveAPI.Configuration.ConfigType
         public string ExcelDbSqlCipherLicense { get; set; } = "OmNpZDowMDFWSjAwMDAwY3pzaVlZQVE6cGxhdGZvcm06MjY6ZXhwaXJlOm5ldmVyOnZlcnNpb246MTpsaWJ2ZXI6NC4xMC4wOmhtYWM6ODQ1Y2JkMzQ0MDc3YjIxNmRlYTgyOWI3OTIyMzRkM2UwYmUyMzNhYw==";
         public string ServerInfoUrl { get; set; } = "https://d2vaidpni345rp.cloudfront.net/com.nexon.bluearchivesteam/server_config/439170_Live_77acRXMErRIj8461BJ0KXJP3t.json";
         public PacketLogging PacketLogging { get; set; } = new();
+        // Fork-only: placeholder entries for the Total Assault ranking screen, so a server with one real
+        // account is not staring at an empty board. Scores follow the shape of a real Binah season board;
+        // no real player data is involved.
+        public MockRaidRanking MockRaidRanking { get; set; } = new();
     }
 
     public class IrcConfig
@@ -80,5 +86,15 @@ namespace BlueArchiveAPI.Configuration.ConfigType
         public bool ErrorPacket = false;
         // On by default: the client reports protocol faults as opaque popups, and without the response bytes there is nothing to compare. Costs one buffered append per request.
         public bool WireDump { get; set; } = true;
+    }
+
+    public class MockRaidRanking
+    {
+        public bool Enabled { get; set; } = true;
+        // How many placeholder players the board holds. The real account is inserted on top of these.
+        public int EntryCount { get; set; } = 100;
+        // Scores are spread from TopScore (rank 1) downwards towards BottomScore (last placeholder).
+        public long TopScore { get; set; } = 53_400_000;
+        public long BottomScore { get; set; } = 51_600_000;
     }
 }

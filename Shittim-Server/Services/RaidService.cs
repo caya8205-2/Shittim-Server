@@ -280,13 +280,15 @@ public static class RaidService
 
         if (bossName == "Binah")
         {
-            var difficultyIndex = (int)difficulty;
+            // The table stops at Torment; Lunatic (7) has no row of its own, so it reuses the Torment
+            // thresholds instead of throwing an IndexOutOfRangeException when a battle ends.
+            var difficultyIndex = Math.Clamp((int)difficulty, 0, 6);
             var secondPhase = new[] { 2f / 3, 5f / 8, 7f / 11, 12f / 20, 3.5f / 6, 4f / 7, 13.2f / 23 };
             var thirdPhase = new[] { 1f / 3, 2f / 8, 3f / 11, 4f / 20, 1f / 6, 1.5f / 7, 4.9f / 23 };
 
-            if (bossHp <= (maxHp * thirdPhase[difficultyIndex])) 
+            if (bossHp <= (maxHp * thirdPhase[difficultyIndex]))
                 return 2;
-            else if (bossHp <= (maxHp * secondPhase[difficultyIndex])) 
+            else if (bossHp <= (maxHp * secondPhase[difficultyIndex]))
                 return 1;
         }
 

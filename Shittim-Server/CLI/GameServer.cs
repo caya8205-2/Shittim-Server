@@ -115,6 +115,8 @@ namespace Shittim.CLI
                 builder.Services.AddSingleton<HandlerManager>();
                 builder.Services.AddSingleton<CustomCharacterService>();
                 builder.Services.AddSingleton<ModCatalogService>();
+                builder.Services.AddSingleton<MockRaidRankingService>();
+                builder.Services.AddSingleton<LeaderboardPresetsService>();
 
                 builder.Services.AddHostedService<Shittim_Server.GameClient.GameClientService>();
 

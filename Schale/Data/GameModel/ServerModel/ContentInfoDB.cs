@@ -30,6 +30,19 @@ namespace Schale.Data.GameModel
         public Difficulty CurrentDifficulty { get; set; }
         public long BestRankingPoint { get; set; } = 0;
         public long TotalRankingPoint { get; set; } = 0;
+
+        // Squad of the best scoring clear. The mock leaderboard shows it on the player's own row, so the
+        // board reflects what was actually used instead of a preset.
+        public List<BestTeamMember> BestTeam { get; set; } = [];
+    }
+
+    public class BestTeamMember
+    {
+        public long UniqueId { get; set; }
+        public int Level { get; set; }
+        public int StarGrade { get; set; }
+        public int SlotIndex { get; set; }
+        public bool IsSpecial { get; set; }
     }
 
     public class EliminateRaidDataInfo : RaidDataInfo
@@ -50,6 +63,10 @@ namespace Schale.Data.GameModel
         public DateTime? TimeRewardLastUpdateTime { get; set; }
         public DateTime? LastDailyRewardClaimTime { get; set; }
         public DateTime? BattleEnterActiveTime { get; set; }
+
+        // Tactical Challenge ladder position. Swapped with the opponent when the player wins, so the rank
+        // shown in the lobby is the rank the server actually believes.
+        public long Rank { get; set; }
     }
 
     public class MultiFloorRaidDataInfo

@@ -7,6 +7,7 @@ using Schale.Data.ModelMapping;
 using Schale.MX.NetworkProtocol;
 using Schale.MX.GameLogic.Parcel;
 using Schale.MX.GameLogic.DBModel;
+using Schale.MX.Logic.Battles.Summary;
 using Schale.MX.Core.Math;
 using Schale.FlatData;
 using Shittim_Server.Core;
@@ -23,6 +24,8 @@ public class RaidHandler : ProtocolHandlerBase
     private readonly IMapper _mapper;
     private readonly RaidManager _raidManager;
     private readonly ParcelHandler _parcelHandler;
+    private readonly MockRaidRankingService _mockRanking;
+    private readonly LeaderboardPresetsService _presets;
 
     public RaidHandler(
         IProtocolHandlerRegistry registry,
@@ -30,13 +33,17 @@ public class RaidHandler : ProtocolHandlerBase
         ExcelTableService excelService,
         IMapper mapper,
         RaidManager raidManager,
-        ParcelHandler parcelHandler) : base(registry)
+        ParcelHandler parcelHandler,
+        MockRaidRankingService mockRanking,
+        LeaderboardPresetsService presets) : base(registry)
     {
         _sessionService = sessionService;
         _excelService = excelService;
         _mapper = mapper;
         _raidManager = raidManager;
         _parcelHandler = parcelHandler;
+        _mockRanking = mockRanking;
+        _presets = presets;
     }
 
     [ProtocolHandler(Protocol.Raid_Login)]
@@ -59,6 +66,16 @@ public class RaidHandler : ProtocolHandlerBase
         var account = await _sessionService.GetAuthenticatedUser(db, request.SessionKey);
 
         var raidLobby = await _raidManager.GetUpdatedLobby(db, account);
+
+        // The lobby panel reads these directly. Both come from the same ladder the ranking rows use, so a 39M
+        // score cannot be shown as first place nor as the Platinum medal.
+        var rank = _mockRanking.RankOf(account.ContentInfo.RaidDataInfo.BestRankingPoint);
+
+        if (rank > 0)
+        {
+            raidLobby.Ranking = rank;
+            raidLobby.Tier = MockRaidRankingService.BracketOf(rank).Tier;
+        }
 
         response.SeasonType = RaidSeasonType.Open;
         response.RaidLobbyInfoDB = raidLobby.ToMap(_mapper);
@@ -274,9 +291,14 @@ public class RaidHandler : ProtocolHandlerBase
 
         if (!request.IsPractice)
         {
-            account.ContentInfo.RaidDataInfo.BestRankingPoint = rankingPoint > account.ContentInfo.RaidDataInfo.BestRankingPoint ?
-                rankingPoint : account.ContentInfo.RaidDataInfo.BestRankingPoint;
+            var previousBest = account.ContentInfo.RaidDataInfo.BestRankingPoint;
+
+            account.ContentInfo.RaidDataInfo.BestRankingPoint = rankingPoint > previousBest ? rankingPoint : previousBest;
             account.ContentInfo.RaidDataInfo.TotalRankingPoint += rankingPoint;
+
+            // The squad that produced the best score is kept so the leaderboard row shows the real team.
+            if (rankingPoint >= previousBest)
+                account.ContentInfo.RaidDataInfo.BestTeam = CaptureTeam(request.Summary);
         }
         account.ContentInfo.RaidDataInfo.TimeBonus = 0;
         db.Entry(account).Property(x => x.ContentInfo).IsModified = true;
@@ -304,7 +326,7 @@ public class RaidHandler : ProtocolHandlerBase
 
         var giveUpRaid = new RaidGiveUpDB
         {
-            Ranking = 1,
+            Ranking = await MockRank(db, account, account.ContentInfo.RaidDataInfo.SeasonId),
             RankingPoint = account.ContentInfo.RaidDataInfo.TotalRankingPoint,
             BestRankingPoint = account.ContentInfo.RaidDataInfo.BestRankingPoint
         };
@@ -392,6 +414,100 @@ public class RaidHandler : ProtocolHandlerBase
         return response;
     }
 
+
+    // Board key for the season's boss, so Binah rows show Binah squads. Falls back to the shared board
+    // when the season table or the file has no matching entry.
+    // Ladder position on the placeholder board: one more than the number of rows with a higher score.
+
+    // Reads the squad that fought the battle out of the summary the client submits.
+    private static List<BestTeamMember> CaptureTeam(BattleSummary summary)
+    {
+        var members = new List<BestTeamMember>();
+        var group = summary.Group01Summary;
+        if (group == null)
+            return members;
+
+        var slot = 0;
+
+        foreach (var hero in group.Heroes ?? [])
+        {
+            members.Add(new BestTeamMember
+            {
+                UniqueId = hero.CharacterId,
+                Level = hero.Level,
+                StarGrade = hero.Grade,
+                SlotIndex = slot++,
+                IsSpecial = false,
+            });
+        }
+
+        foreach (var supporter in group.Supporters ?? [])
+        {
+            members.Add(new BestTeamMember
+            {
+                UniqueId = supporter.CharacterId,
+                Level = supporter.Level,
+                StarGrade = supporter.Grade,
+                SlotIndex = slot++,
+                IsSpecial = true,
+            });
+        }
+
+        return members;
+    }
+    private async Task<long> MockRank(SchaleDataContext db, AccountDBServer account, long seasonId)
+    {
+        var squads = await MockSquads(db, account.ServerId, seasonId);
+        var board = _mockRanking.Build(account, seasonId, account.RepresentCharacterServerId, squads);
+
+        return board.FirstOrDefault(x => x.AccountId == account.ServerId)?.Rank ?? 1;
+    }
+
+    private string MockBoardKey(long seasonId)
+    {
+        try
+        {
+            var season = _excelService.GetTable<RaidSeasonManageExcel>()
+                .FirstOrDefault(x => x.SeasonId == seasonId);
+
+            if (season.OpenRaidBossGroupLength > 0)
+            {
+                var raw = season.OpenRaidBossGroup(0);
+                if (!string.IsNullOrWhiteSpace(raw))
+                    return new string(raw.Where(char.IsLetterOrDigit).ToArray()).ToLowerInvariant();
+            }
+        }
+        catch
+        {
+            // Table unavailable: the shared board still renders.
+        }
+
+        return "totalAssault";
+    }
+
+    // Placeholder rows borrow the account's own echelon presets, so the board shows squads that actually
+    // exist instead of random students. Duplicate presets collapse to one entry.
+    private async Task<List<MockSquad>> MockSquads(SchaleDataContext db, long accountServerId, long seasonId)
+    {
+        // The file is the primary source: the game only holds five presets per group, which is not enough
+        // for every difficulty and raid type. Account presets are the fallback, then generated squads.
+        var fromFile = _presets.Squads(MockBoardKey(seasonId));
+        if (fromFile.Count > 0)
+            return fromFile.ToList();
+
+        var presets = await db.EchelonPresets
+            .Where(x => x.AccountServerId == accountServerId)
+            .ToListAsync();
+
+        return presets
+            .Where(x => x.StrikerUniqueIds is { Length: >= 4 } && x.SpecialUniqueIds is { Length: >= 2 })
+            .Where(x => x.StrikerUniqueIds.Take(4).All(id => id > 0) && x.SpecialUniqueIds.Take(2).All(id => id > 0))
+            .Select(x => new MockSquad(x.StrikerUniqueIds.Take(4).ToList(), x.SpecialUniqueIds.Take(2).ToList()))
+            .GroupBy(x => string.Join(',', x.Strikers) + "|" + string.Join(',', x.Specials))
+            .Select(g => g.First())
+            .ToList();
+    }
+
     [ProtocolHandler(Protocol.Raid_OpponentList)]
     public async Task<RaidOpponentListResponse> OpponentList(
         SchaleDataContext db,
@@ -400,7 +516,20 @@ public class RaidHandler : ProtocolHandlerBase
     {
         var account = await _sessionService.GetAuthenticatedUser(db, request.SessionKey);
 
-        response.OpponentUserDBs = [];
+        // The client asks for this list when the ranking tab opens. Placeholder players come from the
+        // mock generator, and the real account is placed by its own BestRankingPoint.
+        var represent = await db.Characters.FirstOrDefaultAsync(x =>
+            x.AccountServerId == account.ServerId && x.ServerId == account.RepresentCharacterServerId);
+        var seasonId = account.ContentInfo?.RaidDataInfo?.SeasonId ?? 0;
+
+        var squads = await MockSquads(db, account.ServerId, seasonId);
+
+        // Each tab opens at a different starting rank and scrolling asks for the next window through the
+        // same field. The reward group decides which medal tier each row carries.
+        var startRank = request.Rank ?? 1L;
+
+        response.OpponentUserDBs = _mockRanking.Build(
+            account, seasonId, represent?.UniqueId ?? 0, squads, startRank, 100);
         response.ServerTimeTicks = _raidManager.GetRaidTimeTicks(account).Ticks;
 
         return response;
@@ -414,7 +543,9 @@ public class RaidHandler : ProtocolHandlerBase
     {
         var account = await _sessionService.GetAuthenticatedUser(db, request.SessionKey);
 
-        response.RankBrackets = [];
+        // Bracket definitions back the four tabs (Platinum, Gold, Silver, Bronze). An empty list leaves the
+        // client with no tier boundaries, so every tab falls back to the same view.
+        response.RankBrackets = _mockRanking.Brackets();
         response.ServerTimeTicks = _raidManager.GetRaidTimeTicks(account).Ticks;
 
         return response;
@@ -528,9 +659,16 @@ public class RaidHandler : ProtocolHandlerBase
         RaidGetBestTeamRequest request,
         RaidGetBestTeamResponse response)
     {
-        await _sessionService.GetAuthenticatedUser(db, request.SessionKey);
+        var account = await _sessionService.GetAuthenticatedUser(db, request.SessionKey);
+        var seasonId = account.ContentInfo?.RaidDataInfo?.SeasonId ?? 0;
 
-        response.RaidTeamSettingDBs = [];
+        // The Details button on a ranking row asks for that row's squad. Placeholder ids encode the rank,
+        // so the same bracket depth and equipment profile are reproduced here.
+        var squads = await MockSquads(db, account.ServerId, seasonId);
+        var rank = Math.Max(1, request.SearchAccountId - 9_000_000);
+        var team = _mockRanking.BuildTeam(
+            seasonId, request.SearchAccountId, squads, MockRaidRankingService.BracketOf(rank), rank);
+        response.RaidTeamSettingDBs = team == null ? [] : [team];
 
         return response;
     }
